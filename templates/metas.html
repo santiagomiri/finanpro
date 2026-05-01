@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">🎯 Metas de Ahorro</h2>
+
+<div class="card p-4 mb-4">
+    <h5 class="mb-3">Crear nueva meta</h5>
+    <form action="/crear_meta" method="POST">
+        <div class="row g-2">
+            <div class="col-md-5">
+                <label>Nombre</label>
+                <input name="nombre" class="form-control" placeholder="Ej: Viaje, Moto, PC..." required>
+            </div>
+            <div class="col-md-5">
+                <label>Monto objetivo</label>
+                <input name="objetivo" class="form-control money-input" placeholder="Ej: 5.000.000" required>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-success w-100">Crear</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="row g-3">
+{% for m in metas %}
+{% set progreso = (m["ahorro"] / m["objetivo"] * 100) if m["objetivo"] > 0 else 0 %}
+<div class="col-md-6">
+    <div class="meta-card">
+        <div class="d-flex justify-content-between mb-2">
+            <h5 style="color:#f1f5f9;">{{ m["nombre"] }}</h5>
+            <form action="/eliminar_meta" method="POST"
+                  onsubmit="return confirm('¿Eliminar esta meta?')">
+                <input type="hidden" name="id" value="{{ m['id'] }}">
+                <button class="btn btn-danger btn-sm">🗑</button>
+            </form>
+        </div>
+
+        <p style="color:#94a3b8; margin-bottom:.5rem;">
+            💰 <span style="color:#22c55e;">${{ m["ahorro"]|money }}</span>
+            /
+            <span style="color:#38bdf8;">${{ m["objetivo"]|money }}</span>
+            <small class="d-block" style="color:#64748b;">{{ progreso|round(1) }}% completado</small>
+        </p>
+
+        <div class="progress mb-3" style="height:18px;">
+            <div class="progress-bar
+                {% if progreso < 40 %}bg-danger
+                {% elif progreso < 80 %}bg-warning
+                {% else %}bg-success{% endif %}"
+                style="width: {{ [progreso, 100]|min }}%; font-size:11px; line-height:18px;">
+                {{ progreso|round(0) }}%
+            </div>
+        </div>
+
+        {% if progreso >= 100 %}
+        <p class="text-success text-center">🎉 ¡Meta alcanzada!</p>
+        {% else %}
+        <form action="/ahorrar" method="POST">
+            <input type="hidden" name="meta_id" value="{{ m['id'] }}">
+            <div class="d-flex gap-2">
+                <input name="monto" class="form-control money-input" placeholder="Ahorrar..." required>
+                <button class="btn btn-primary">Ahorrar</button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="col-12">
+    <div class="card p-4 text-center text-muted">No tienes metas de ahorro aún. ¡Crea tu primera!</div>
+</div>
+{% endfor %}
+</div>
+
+{% endblock %}

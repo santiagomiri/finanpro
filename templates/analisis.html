@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">🧠 Análisis Financiero</h2>
+
+<!-- SCORE -->
+<div class="analysis-card text-center mb-4">
+    <h5>💯 Score Financiero</h5>
+    <div class="display-4 text-{{ color_score }} fw-bold">{{ score }}/100</div>
+    <p class="text-{{ color_score }} mt-1">Nivel: <strong>{{ nivel_score }}</strong></p>
+    <div class="progress mt-3" style="height:20px;">
+        <div class="progress-bar bg-{{ color_score }}" style="width:{{ score }}%;"></div>
+    </div>
+</div>
+
+<!-- ESTADO -->
+<div class="analysis-card mb-4">
+    <h5>📊 Estado Financiero</h5>
+    <p class="text-{{ color }} mb-1"><strong>{{ estado }}</strong></p>
+    <p class="mb-0" style="color:#94a3b8;">Estás usando el <strong>{{ porcentaje|round(1) }}%</strong> de tus ingresos</p>
+</div>
+
+<!-- RESUMEN -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="analysis-card card-ingreso text-center">
+            <h5>💰 Ingresos</h5>
+            <h3 class="text-success">${{ ingresos|money }}</h3>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="analysis-card card-gasto text-center">
+            <h5>💸 Gastos</h5>
+            <h3 class="text-danger">${{ gastos|money }}</h3>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="analysis-card card-balance text-center">
+            <h5>📈 Balance</h5>
+            <h3 class="text-info">${{ balance|money }}</h3>
+        </div>
+    </div>
+</div>
+
+<!-- TOP GASTO -->
+<div class="analysis-card mb-4">
+    <h5>🏆 Categoría con Más Gasto</h5>
+    {% if top_categoria %}
+        <p class="mb-0">Estás gastando más en: <strong style="color:#f59e0b;">{{ top_categoria }}</strong></p>
+        <p class="mb-0" style="color:#94a3b8;">Total: ${{ max_gasto|money }}</p>
+    {% else %}
+        <p class="text-muted">No hay datos suficientes</p>
+    {% endif %}
+</div>
+
+<!-- RECOMENDACIONES -->
+<div class="analysis-card mb-4">
+    <h5>💡 Recomendaciones</h5>
+    {% if porcentaje > 80 %}
+        <p class="text-danger">⚠️ Estás gastando demasiado. Reduce gastos urgentemente.</p>
+    {% elif porcentaje > 60 %}
+        <p class="text-warning">⚠️ Podrías optimizar tus gastos para mejorar tu ahorro.</p>
+    {% else %}
+        <p class="text-success">✔️ Excelente manejo financiero. ¡Sigue así!</p>
+    {% endif %}
+    {% if top_categoria %}
+        <p class="mb-0" style="color:#94a3b8;">Revisa y controla los gastos en <strong>{{ top_categoria }}</strong>.</p>
+    {% endif %}
+</div>
+
+<!-- PREDICCIÓN -->
+<div class="analysis-card mb-4">
+    <h5>🔮 Predicción de Gastos</h5>
+    <p style="color:#94a3b8;" class="mb-1">Gasto estimado próximo período:</p>
+    <h3 class="text-info">${{ prediccion|money }}</h3>
+    <p class="mb-0">Tendencia: <strong>{{ tendencia }}</strong></p>
+    {% if "Subiendo" in tendencia %}
+        <p class="text-danger mt-1">⚠️ Tus gastos están aumentando</p>
+    {% elif "Bajando" in tendencia %}
+        <p class="text-success mt-1">✔️ Vas reduciendo tus gastos</p>
+    {% else %}
+        <p class="text-warning mt-1">📊 Comportamiento estable</p>
+    {% endif %}
+</div>
+
+{% endblock %}

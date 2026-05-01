@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">📊 Gráficas Financieras</h2>
+
+<!-- LÍNEA: Evolución mensual -->
+<div class="card p-4 mb-4">
+    <h5 class="mb-3">📈 Evolución Mensual</h5>
+    <canvas id="graficaLine" height="80"></canvas>
+</div>
+
+<!-- BARRAS: Comparación total -->
+<div class="card p-4 mb-4">
+    <h5 class="mb-3">💰 Comparación Total</h5>
+    <canvas id="graficaBar" height="80"></canvas>
+</div>
+
+<!-- DONUTS: por categoría -->
+<div class="row g-4 mb-2">
+    <div class="col-md-6">
+        <div class="card p-4">
+            <h5 class="mb-3">💸 Gastos por Categoría</h5>
+            {% if cat_gastos_data %}
+                <canvas id="graficaDonutGastos"></canvas>
+            {% else %}
+                <p class="text-muted text-center py-4">No hay gastos registrados aún</p>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-4">
+            <h5 class="mb-3">💰 Ingresos por Categoría</h5>
+            {% if cat_ingresos_data %}
+                <canvas id="graficaDonutIngresos"></canvas>
+            {% else %}
+                <p class="text-muted text-center py-4">No hay ingresos registrados aún</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const meses      = {{ meses | tojson }};
+const ingresos   = {{ ingresos | tojson }};
+const gastos     = {{ gastos | tojson }};
+
+const catGastosLabels   = {{ cat_gastos_labels | tojson }};
+const catGastosData     = {{ cat_gastos_data | tojson }};
+const catIngresosLabels = {{ cat_ingresos_labels | tojson }};
+const catIngresosData   = {{ cat_ingresos_data | tojson }};
+
+function fmt(n){ return "$" + new Intl.NumberFormat("es-CO").format(n); }
+
+const paletaGastos = [
+    "#ef4444","#f97316","#f59e0b","#eab308",
+    "#84cc16","#22c55e","#14b8a6","#06b6d4",
+    "#3b82f6","#8b5cf6","#ec4899","#94a3b8"
+];
+const paletaIngresos = [
+    "#22c55e","#16a34a","#86efac","#4ade80",
+    "#34d399","#10b981","#059669","#047857",
+    "#065f46","#6ee7b7","#a7f3d0","#d1fae5"
+];
+
+const commonLineOpts = {
+    plugins: {
+        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } },
+        legend: { labels: { color: "#94a3b8" } }
+    },
+    scales: {
+        x: { ticks: { color:"#94a3b8" }, grid: { color:"#1e293b" } },
+        y: { ticks: { color:"#94a3b8", callback: v => fmt(v) }, grid: { color:"#1e293b" } }
+    }
+};
+
+// ── Línea ──
+new Chart(document.getElementById('graficaLine'), {
+    type: 'line',
+    data: {
+        labels: meses,
+        datasets: [
+            { label: '💰 Ingresos', data: ingresos, borderColor:"#22c55e", backgroundColor:"rgba(34,197,94,.1)", tension: 0.3, fill: true },
+            { label: '💸 Gastos',   data: gastos,   borderColor:"#ef4444", backgroundColor:"rgba(239,68,68,.1)",  tension: 0.3, fill: true }
+        ]
+    },
+    options: commonLineOpts
+});
+
+// ── Barras ──
+new Chart(document.getElementById('graficaBar'), {
+    type: 'bar',
+    data: {
+        labels: ['Ingresos', 'Gastos'],
+        datasets: [{
+            data: [
+                ingresos.reduce((a,b)=>a+b,0),
+                gastos.reduce((a,b)=>a+b,0)
+            ],
+            backgroundColor: ["rgba(34,197,94,.6)", "rgba(239,68,68,.6)"],
+            borderColor:     ["#22c55e",            "#ef4444"],
+            borderWidth: 1, borderRadius: 8
+        }]
+    },
+    options: {
+        ...commonLineOpts,
+        plugins: { ...commonLineOpts.plugins, legend: { display: false } }
+    }
+});
+
+// ── Donut gastos ──
+{% if cat_gastos_data %}
+new Chart(document.getElementById('graficaDonutGastos'), {
+    type: 'doughnut',
+    data: {
+        labels: catGastosLabels,
+        datasets: [{
+            data: catGastosData,
+            backgroundColor: paletaGastos.slice(0, catGastosLabels.length),
+            borderColor: "#0f172a",
+            borderWidth: 3,
+            hoverOffset: 8
+        }]
+    },
+    options: {
+        cutout: '65%',
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: "#94a3b8", padding: 16, font: { size: 12 } }
+            },
+            tooltip: {
+                callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)}` }
+            }
+        }
+    }
+});
+{% endif %}
+
+// ── Donut ingresos ──
+{% if cat_ingresos_data %}
+new Chart(document.getElementById('graficaDonutIngresos'), {
+    type: 'doughnut',
+    data: {
+        labels: catIngresosLabels,
+        datasets: [{
+            data: catIngresosData,
+            backgroundColor: paletaIngresos.slice(0, catIngresosLabels.length),
+            borderColor: "#0f172a",
+            borderWidth: 3,
+            hoverOffset: 8
+        }]
+    },
+    options: {
+        cutout: '65%',
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: "#94a3b8", padding: 16, font: { size: 12 } }
+            },
+            tooltip: {
+                callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)}` }
+            }
+        }
+    }
+});
+{% endif %}
+</script>
+
+{% endblock %}

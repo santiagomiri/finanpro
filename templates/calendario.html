@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">📅 Calendario Financiero</h2>
+
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+
+<div id="calendar"></div>
+
+<!-- MODAL VER MOVIMIENTOS -->
+<div class="modal fade" id="modalMovimientos">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📅 <span id="modalFecha"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR -->
+<div class="modal fade" id="modalEditar">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Editar Movimiento</h5>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit_id">
+        <input type="hidden" id="edit_tipo">
+        <div class="mb-2"><label>Monto</label><input id="edit_monto" class="form-control money-input"></div>
+        <div class="mb-3"><label>Descripción</label><input id="edit_desc" class="form-control"></div>
+        <button class="btn btn-success w-100" onclick="guardarEdicion()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AGREGAR -->
+<div class="modal fade" id="modalAgregar">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">➕ Agregar Movimiento</h5>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="add_fecha">
+        <div class="mb-2">
+            <label>Tipo</label>
+            <select id="add_tipo" class="form-select">
+                <option>Ingreso</option>
+                <option>Gasto</option>
+            </select>
+        </div>
+        <div class="mb-2"><label>Monto</label><input id="add_monto" class="form-control money-input" placeholder="Ej: 1.000.000"></div>
+        <div class="mb-3"><label>Descripción</label><input id="add_desc" class="form-control" placeholder="Opcional"></div>
+        <button class="btn btn-success w-100" onclick="guardarMovimiento()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function fmt(n){ return new Intl.NumberFormat("es-CO").format(n); }
+
+document.addEventListener('DOMContentLoaded', function() {
+    var cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
+        initialView: 'dayGridMonth',
+        height: 650,
+        events: "/eventos",
+        editable: true,
+        eventStartEditable: true,
+
+        eventDidMount: function(info) {
+            const colores = { gasto:"#ef4444", ingreso:"#22c55e", fijo:"#f59e0b" };
+            const tipo = info.event.extendedProps.tipo;
+            if(colores[tipo]) info.el.style.backgroundColor = colores[tipo];
+        },
+
+        eventDrop: function(info) {
+            let fd = new FormData();
+            fd.append("id", info.event.id);
+            fd.append("tipo", info.event.extendedProps.tipo);
+            fd.append("fecha", info.event.startStr);
+            fetch("/mover_movimiento", { method:"POST", body:fd });
+        },
+
+        dateClick: function(info) {
+            fetch("/eventos_dia?fecha=" + info.dateStr)
+            .then(r => r.json())
+            .then(data => {
+                let html = `<button class="btn btn-success mb-3 w-100"
+                    onclick="abrirAgregar('${info.dateStr}')">➕ Agregar movimiento</button>`;
+
+                if(data.length === 0){
+                    html += `<p class="text-muted text-center">No hay movimientos este día</p>`;
+                } else {
+                    data.forEach(e => {
+                        html += `
+                        <div class="mov-item">
+                            <strong>${e.tipo}</strong> — $${fmt(e.monto)}<br>
+                            <small style="color:#94a3b8;">${e.descripcion || "Sin descripción"}</small><br>
+                            <div class="mt-2">
+                            <button class="btn btn-warning btn-sm me-1"
+                                onclick="editarMov(${e.id},'${e.tipo}',${e.monto},'${e.descripcion}')">✏️</button>
+                            <button class="btn btn-danger btn-sm"
+                                onclick="eliminarMov(${e.id},'${e.tipo}')">🗑️</button>
+                            </div>
+                        </div>`;
+                    });
+                }
+
+                document.getElementById("modalBody").innerHTML = html;
+                document.getElementById("modalFecha").innerText = info.dateStr;
+                new bootstrap.Modal(document.getElementById('modalMovimientos')).show();
+            });
+        }
+    });
+    cal.render();
+});
+
+function abrirAgregar(fecha){
+    document.getElementById("add_fecha").value = fecha;
+    new bootstrap.Modal(document.getElementById('modalAgregar')).show();
+}
+
+function guardarMovimiento(){
+    let fd = new FormData();
+    fd.append("tipo",        document.getElementById("add_tipo").value);
+    fd.append("monto",       document.getElementById("add_monto").value.replace(/\./g,""));
+    fd.append("descripcion", document.getElementById("add_desc").value);
+    fd.append("fecha",       document.getElementById("add_fecha").value);
+    fetch("/agregar_movimiento",{method:"POST",body:fd}).then(()=>location.reload());
+}
+
+function editarMov(id, tipo, monto, desc){
+    document.getElementById("edit_id").value   = id;
+    document.getElementById("edit_tipo").value = tipo;
+    document.getElementById("edit_monto").value = fmt(monto);
+    document.getElementById("edit_desc").value  = desc;
+    new bootstrap.Modal(document.getElementById('modalEditar')).show();
+}
+
+function guardarEdicion(){
+    let fd = new FormData();
+    fd.append("id",          document.getElementById("edit_id").value);
+    fd.append("tipo",        document.getElementById("edit_tipo").value);
+    fd.append("monto",       document.getElementById("edit_monto").value.replace(/\./g,""));
+    fd.append("descripcion", document.getElementById("edit_desc").value);
+    fetch("/editar_movimiento",{method:"POST",body:fd}).then(()=>location.reload());
+}
+
+function eliminarMov(id, tipo){
+    if(!confirm("¿Eliminar movimiento?")) return;
+    let fd = new FormData();
+    fd.append("id", id); fd.append("tipo", tipo);
+    fetch("/eliminar_movimiento",{method:"POST",body:fd}).then(()=>location.reload());
+}
+</script>
+
+{% endblock %}

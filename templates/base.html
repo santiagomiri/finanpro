@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinanPro</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+<!-- Botón menú móvil -->
+<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+
+<div class="d-flex">
+
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+        <div class="sidebar-brand">💳 FinanPro</div>
+
+        {% set path = request.path %}
+        <a href="/dashboard"    class="{{ 'active' if path=='/dashboard' }}">🏠 Dashboard</a>
+        <a href="/gastos_fijos" class="{{ 'active' if path=='/gastos_fijos' }}">📌 Gastos Fijos</a>
+        <a href="/presupuesto"  class="{{ 'active' if path=='/presupuesto' }}">💰 Presupuesto</a>
+        <a href="/metas"        class="{{ 'active' if path=='/metas' }}">🎯 Metas</a>
+        <a href="/calendario"   class="{{ 'active' if path=='/calendario' }}">📅 Calendario</a>
+        <a href="/analisis"     class="{{ 'active' if path=='/analisis' }}">🧠 Análisis</a>
+        <a href="/graficas"     class="{{ 'active' if path=='/graficas' }}">📊 Gráficas</a>
+        <a href="/reportes"     class="{{ 'active' if path=='/reportes' }}">📄 Reportes</a>
+
+        <hr>
+        <a href="/logout" class="logout">🚪 Salir</a>
+    </nav>
+
+    <!-- CONTENIDO -->
+    <main class="main-content flex-grow-1">
+        {% block content %}{% endblock %}
+    </main>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Formato dinero automático
+document.addEventListener("input", function(e) {
+    if (e.target.classList.contains("money-input")) {
+        let v = e.target.value.replace(/\D/g, "");
+        e.target.value = v ? Number(v).toLocaleString("es-CO") : "";
+    }
+});
+// Limpiar formato al enviar
+document.addEventListener("submit", function(e) {
+    e.target.querySelectorAll(".money-input").forEach(inp => {
+        inp.value = inp.value.replace(/\./g, "");
+    });
+});
+</script>
+
+</body>
+</html>

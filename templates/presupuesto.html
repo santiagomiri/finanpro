@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">💰 Presupuesto Mensual</h2>
+
+<div class="card p-4 mb-4">
+    <h5 class="mb-3">Agregar Presupuesto</h5>
+    <form action="/add_presupuesto" method="POST">
+        <div class="row g-2">
+            <div class="col-md-5">
+                <label>Categoría</label>
+                <select name="categoria" class="form-select">
+                    <option>Comida</option>
+                    <option>Transporte</option>
+                    <option>Ocio</option>
+                    <option>Salud</option>
+                    <option>Educación</option>
+                    <option>Servicios</option>
+                    <option>Otro</option>
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label>Límite mensual</label>
+                <input name="limite" class="form-control money-input" placeholder="Ej: 200.000" required>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100">Agregar</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="row g-3">
+{% for p in data %}
+{% set pct = (p[3]/p[2]*100) if p[2] > 0 else 0 %}
+<div class="col-md-6">
+    <div class="meta-card">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <h5 style="color:#f1f5f9;">{{ p[1] }}</h5>
+            <form action="/eliminar_presupuesto" method="POST"
+                  onsubmit="return confirm('¿Eliminar presupuesto?')">
+                <input type="hidden" name="id" value="{{ p[0] }}">
+                <button class="btn btn-danger btn-sm">🗑</button>
+            </form>
+        </div>
+
+        <p style="color:#94a3b8; margin-bottom:.5rem;">
+            Gastado: <span style="color:#ef4444;">${{ p[3]|money }}</span>
+            /
+            Límite: <span style="color:#22c55e;">${{ p[2]|money }}</span>
+        </p>
+
+        <div class="progress mb-2" style="height:14px;">
+            <div class="progress-bar
+                {% if pct > 100 %}bg-danger
+                {% elif pct > 70 %}bg-warning
+                {% else %}bg-success{% endif %}"
+                style="width: {{ [pct, 100]|min }}%;">
+            </div>
+        </div>
+
+        {% if pct > 100 %}
+            <p class="text-danger" style="font-size:.85rem;">⚠️ Te pasaste del presupuesto</p>
+        {% elif pct > 70 %}
+            <p class="text-warning" style="font-size:.85rem;">⚠️ Estás cerca del límite ({{ pct|round(0) }}%)</p>
+        {% else %}
+            <p class="text-success" style="font-size:.85rem;">✔️ Vas bien ({{ pct|round(0) }}%)</p>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="col-12">
+    <div class="card p-4 text-center text-muted">No hay presupuestos configurados aún</div>
+</div>
+{% endfor %}
+</div>
+
+{% endblock %}
