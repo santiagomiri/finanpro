@@ -111,3 +111,11 @@ Para uso personal/demo el plan gratis funciona perfectamente.
 - **Gráficas:** Chart.js
 - **PDF:** ReportLab
 - **Deploy:** Render / Railway / cualquier PaaS Python
+
+
+## 🧪 Pruebas
+
+```bash
+pip install pytest
+pytest
+```

@@ -4,9 +4,22 @@ from datetime import datetime, date
 from flask import Flask, render_template, request, redirect, session, send_file, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
+import secrets
+import logging
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "finanpro-secret-2024-change-in-production")
+
+_secret = os.environ.get("SECRET_KEY")
+if not _secret:
+    # Sin SECRET_KEY se genera una clave aleatoria (las sesiones se cierran al reiniciar).
+    # Nunca usar una clave fija escrita en el código: el repositorio es público.
+    logging.warning("SECRET_KEY no definida: usando clave temporal aleatoria.")
+    _secret = secrets.token_hex(32)
+app.secret_key = _secret
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",  # mitiga CSRF en peticiones POST desde otros sitios
+)
 
 # ─────────────────────────────────────────
 # DATABASE
@@ -89,11 +102,19 @@ def format_money(value):
 app.jinja_env.filters['money'] = format_money
 
 def limpiar_monto(raw):
-    """Limpia formato colombiano 1.000.000 → float"""
+    """Convierte un monto en formato colombiano a float.
+
+    Ejemplos: "1.000.000" -> 1000000.0 | "10,50" -> 10.5 | "1.250,75" -> 1250.75
+    El punto es separador de miles y la coma es separador decimal.
+    Montos negativos o inválidos se devuelven como 0.0.
+    """
+    texto = str(raw or "").strip().replace("$", "").replace(" ", "")
+    texto = texto.replace(".", "").replace(",", ".")
     try:
-        return float(str(raw).replace(".", "").replace(",", ""))
-    except:
+        valor = float(texto)
+    except ValueError:
         return 0.0
+    return round(valor, 2) if valor > 0 else 0.0
 
 def login_required(f):
     from functools import wraps
@@ -103,6 +124,52 @@ def login_required(f):
             return redirect("/")
         return f(*args, **kwargs)
     return decorated
+
+# Tablas de movimientos según el tipo que envía el frontend.
+# El calendario usa "ingreso"/"gasto"/"fijo" y el modal del día "Ingreso"/"Gasto"/"Fijo".
+TABLAS_MOVIMIENTO = {
+    "ingreso": {"tabla": "ingresos", "fecha": "fecha", "descripcion": "descripcion"},
+    "gasto": {"tabla": "gastos", "fecha": "fecha", "descripcion": "descripcion"},
+    "fijo": {"tabla": "gastos_fijos", "fecha": "fecha_pago", "descripcion": "nombre"},
+}
+
+def tabla_movimiento(tipo):
+    """Devuelve la configuración de tabla para un tipo, o None si no es válido."""
+    return TABLAS_MOVIMIENTO.get(str(tipo or "").strip().lower())
+
+def hoy_colombia():
+    from datetime import timedelta, timezone
+    return datetime.now(timezone(timedelta(hours=-5))).date()
+
+def sumar_meses(fecha, meses):
+    """Suma meses a una fecha conservando el día (ajustado al último día del mes)."""
+    import calendar
+    mes_total = fecha.month - 1 + meses
+    anio = fecha.year + mes_total // 12
+    mes = mes_total % 12 + 1
+    dia = min(fecha.day, calendar.monthrange(anio, mes)[1])
+    return date(anio, mes, dia)
+
+def renovar_gastos_fijos(conn, uid):
+    """Los gastos fijos son mensuales: si un gasto 'Pagado' tiene su fecha de pago
+    en un mes anterior al actual, se mueve al mes actual y vuelve a 'Pendiente'."""
+    hoy = hoy_colombia()
+    filas = conn.execute(
+        "SELECT id, fecha_pago FROM gastos_fijos WHERE usuario_id=? AND estado='Pagado'", (uid,)
+    ).fetchall()
+    for f in filas:
+        try:
+            fecha = datetime.strptime(f["fecha_pago"], "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            continue
+        meses = (hoy.year - fecha.year) * 12 + (hoy.month - fecha.month)
+        if meses > 0:
+            nueva = sumar_meses(fecha, meses)
+            conn.execute(
+                "UPDATE gastos_fijos SET fecha_pago=?, estado='Pendiente' WHERE id=? AND usuario_id=?",
+                (nueva.isoformat(), f["id"], uid),
+            )
+    conn.commit()
 
 # ─────────────────────────────────────────
 # AUTH
@@ -163,6 +230,7 @@ def logout():
 def dashboard():
     uid = session["user_id"]
     conn = get_db()
+    renovar_gastos_fijos(conn, uid)
 
     ingresos = conn.execute("SELECT COALESCE(SUM(monto),0) FROM ingresos WHERE usuario_id=?", (uid,)).fetchone()[0]
     gastos   = conn.execute("SELECT COALESCE(SUM(monto),0) FROM gastos WHERE usuario_id=?", (uid,)).fetchone()[0]
@@ -219,6 +287,7 @@ def add_gasto():
 def gastos_fijos():
     uid = session["user_id"]
     conn = get_db()
+    renovar_gastos_fijos(conn, uid)
     gastos = conn.execute("""
         SELECT id, nombre, categoria, monto, fecha_pago, estado
         FROM gastos_fijos WHERE usuario_id=? ORDER BY fecha_pago
@@ -286,11 +355,13 @@ def presupuesto():
     uid = session["user_id"]
     conn = get_db()
     presupuestos = conn.execute("SELECT * FROM presupuestos WHERE usuario_id=?", (uid,)).fetchall()
+    mes_actual = hoy_colombia().strftime("%Y-%m")  # el presupuesto es mensual
     data = []
     for p in presupuestos:
         gastado = conn.execute(
-            "SELECT COALESCE(SUM(monto),0) FROM gastos WHERE usuario_id=? AND categoria=?",
-            (uid, p["categoria"])
+            """SELECT COALESCE(SUM(monto),0) FROM gastos
+               WHERE usuario_id=? AND categoria=? AND strftime('%Y-%m', fecha)=?""",
+            (uid, p["categoria"], mes_actual)
         ).fetchone()[0]
         data.append((p["id"], p["categoria"], p["limite"], gastado))
     conn.close()
@@ -367,6 +438,7 @@ def calendario():
 def eventos():
     uid = session["user_id"]
     conn = get_db()
+    renovar_gastos_fijos(conn, uid)
     result = []
 
     for i in conn.execute("SELECT id, monto, descripcion, fecha FROM ingresos WHERE usuario_id=?", (uid,)).fetchall():
@@ -424,14 +496,16 @@ def agregar_movimiento():
 @login_required
 def editar_movimiento():
     uid = session["user_id"]
-    tipo = request.form["tipo"]
-    monto = limpiar_monto(request.form["monto"])
-    descripcion = request.form["descripcion"]
-    id_mov = request.form["id"]
+    cfg = tabla_movimiento(request.form.get("tipo"))
+    if not cfg:
+        return "tipo inválido", 400
+    monto = limpiar_monto(request.form.get("monto"))
+    descripcion = request.form.get("descripcion", "").strip()
     conn = get_db()
-    tabla = "ingresos" if tipo == "Ingreso" else "gastos"
-    conn.execute(f"UPDATE {tabla} SET monto=?, descripcion=? WHERE id=? AND usuario_id=?",
-                 (monto, descripcion, id_mov, uid))
+    conn.execute(
+        f"UPDATE {cfg['tabla']} SET monto=?, {cfg['descripcion']}=? WHERE id=? AND usuario_id=?",
+        (monto, descripcion, request.form.get("id"), uid),
+    )
     conn.commit(); conn.close()
     return "ok"
 
@@ -439,11 +513,12 @@ def editar_movimiento():
 @login_required
 def eliminar_movimiento():
     uid = session["user_id"]
-    tipo = request.form["tipo"]
-    id_mov = request.form["id"]
+    cfg = tabla_movimiento(request.form.get("tipo"))
+    if not cfg:
+        return "tipo inválido", 400
     conn = get_db()
-    tabla = "ingresos" if tipo == "Ingreso" else "gastos"
-    conn.execute(f"DELETE FROM {tabla} WHERE id=? AND usuario_id=?", (id_mov, uid))
+    conn.execute(f"DELETE FROM {cfg['tabla']} WHERE id=? AND usuario_id=?",
+                 (request.form.get("id"), uid))
     conn.commit(); conn.close()
     return "ok"
 
@@ -451,12 +526,17 @@ def eliminar_movimiento():
 @login_required
 def mover_movimiento():
     uid = session["user_id"]
-    tipo = request.form["tipo"]
-    id_mov = request.form["id"]
-    fecha = request.form["fecha"]
+    cfg = tabla_movimiento(request.form.get("tipo"))
+    fecha = request.form.get("fecha", "")
+    if not cfg:
+        return "tipo inválido", 400
+    try:
+        datetime.strptime(fecha[:10], "%Y-%m-%d")
+    except ValueError:
+        return "fecha inválida", 400
     conn = get_db()
-    tabla = "ingresos" if tipo == "ingreso" else "gastos"
-    conn.execute(f"UPDATE {tabla} SET fecha=? WHERE id=? AND usuario_id=?", (fecha, id_mov, uid))
+    conn.execute(f"UPDATE {cfg['tabla']} SET {cfg['fecha']}=? WHERE id=? AND usuario_id=?",
+                 (fecha[:10], request.form.get("id"), uid))
     conn.commit(); conn.close()
     return "ok"
 
@@ -488,15 +568,26 @@ def analisis():
     elif porcentaje < 80: estado, color = "Estable", "warning"
     else: estado, color = "Riesgoso", "danger"
 
-    gastos_lista = [r["monto"] for r in conn.execute(
-        "SELECT monto FROM gastos WHERE usuario_id=? ORDER BY fecha", (uid,)).fetchall()]
+    # Gasto total por mes (últimos 3 meses completos + mes actual)
+    hoy = hoy_colombia()
+    meses = [sumar_meses(hoy.replace(day=1), -i).strftime("%Y-%m") for i in range(3, -1, -1)]
+    por_mes = dict(conn.execute("""
+        SELECT strftime('%Y-%m', fecha), SUM(monto) FROM gastos
+        WHERE usuario_id=? GROUP BY strftime('%Y-%m', fecha)""", (uid,)).fetchall())
     conn.close()
+    cerrados = [por_mes.get(m, 0) for m in meses[:3]]
+    con_datos = [v for v in cerrados if v > 0]
 
-    prediccion = sum(gastos_lista) / len(gastos_lista) if gastos_lista else 0
+    # Predicción: promedio mensual de los últimos 3 meses con gastos
+    prediccion = sum(con_datos) / len(con_datos) if con_datos else por_mes.get(meses[3], 0)
+
+    # Tendencia: último mes cerrado vs. el anterior (±10 % se considera estable)
     tendencia = "Estable 📊"
-    if len(gastos_lista) >= 2:
-        if gastos_lista[-1] > gastos_lista[0]: tendencia = "Subiendo 📈"
-        elif gastos_lista[-1] < gastos_lista[0]: tendencia = "Bajando 📉"
+    anterior, ultimo = cerrados[1], cerrados[2]
+    if anterior > 0 and ultimo > 0:
+        cambio = (ultimo - anterior) / anterior
+        if cambio > 0.10: tendencia = "Subiendo 📈"
+        elif cambio < -0.10: tendencia = "Bajando 📉"
 
     score = 100
     if porcentaje > 80: score -= 40
